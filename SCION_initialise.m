@@ -1,4 +1,3 @@
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                                               %
 %              110111010                                                                        %
@@ -7,7 +6,7 @@
 %      11011------------------101         SCION: Spatial Continuous Integration                 %
 %     111-----------------10011011        Earth Evolution Model                                 %
 %    1--10---------------1111011111                                                             %
-%    1---1011011---------1010110111       Lead developer: Benjamin J. W. Mills                  %
+%    1---1011011---------1010110111       Coded by Benjamin J. W. Mills                         %
 %    1---1011000111----------010011       email: b.mills@leeds.ac.uk                            %
 %    1----1111011101----------10101                                                             %
 %     1----1001111------------0111        Model initialiser                                     %
@@ -48,8 +47,13 @@ function run = SCION_initialise(runcontrol)
     global plotrun
     global sensparams
     %%%% global tuning variables
-    global tuning
- 
+    global Gtune
+    global Ctune
+    global PYRtune
+    global GYPtune
+    global Atune
+    global Otune
+    global Stune
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%   Check for sensitivity analysis   %%%%%%%%%%%%%%%%
@@ -111,9 +115,12 @@ function run = SCION_initialise(runcontrol)
     pars.k_mopb = 1e10 ;
     pars.k_phosw = 4.25e10 ;
     pars.k_landfrac = 0.0588 ;
+
     %%%% N cycle
     pars.k_nfix = 8.67e12 ;
     pars.k_denit = 4.3e12 ;
+    pars.k_riverine = 1.23e12 ;
+    pars.k_ndepo = 1.20e12 ;
 
     %%%% fluxes calculated for steady state
     pars.k_oxidw = pars.k_mocb + pars.k_locb - pars.k_ocdeg - pars.k_reductant_input ;
@@ -176,8 +183,7 @@ function run = SCION_initialise(runcontrol)
     end
 
     %%%% load INTERPSTACK
-    load( 'forcings/INTERPSTACK_1Ga_2025.mat' ) ;
-    
+    load( 'forcings/INTERPSTACK_oct_2021.mat' ) ;
 
     %%%% relative contribution from latitude bands
     lat_areas = (cosd(INTERPSTACK.lat))' ;
@@ -194,11 +200,11 @@ function run = SCION_initialise(runcontrol)
     forcings.newGA = xlsread('forcings/GA_revised.xlsx','','','basic') ;
     forcings.newGA(:,1) = forcings.newGA(:,1)*1e6 ; %%% correct Myr
     %%%% degassing rate
-    load('forcings/combined_D_force_1000_rev.mat') ;
-    forcings.D_force_x = xgrid ;    
-    forcings.D_force_min = newmin ;
-    forcings.D_force_max = newmax ;
-    forcings.D_force_mid = (newmin + newmax) ./ 2 ;
+    load('forcings/combined_D_force_oct_2021.mat') ;
+    forcings.D_force_x = D_force_x ;
+    forcings.D_force_mid = D_force_mid ;
+    forcings.D_force_min = D_force_min ;
+    forcings.D_force_max = D_force_max ;
     
     %%%% load shoreline forcing
     load('forcings/shoreline.mat') ;
@@ -213,6 +219,42 @@ function run = SCION_initialise(runcontrol)
     end
     
     
+    %%%% read sea level file
+    forcings.sea_level = xlsread('forcings/Sea_level.xlsx','','','basic') ;
+    forcings.sea_level(:,1) = forcings.sea_level(:,1)*-1 ; 
+
+
+    %%%% read Palaeotropical Forests file
+    forcings.Palaeo_Forest = xlsread('forcings/Palaeotropical_Forest.xlsx','','','basic') ;
+    forcings.Palaeo_Forest(:,1) = forcings.Palaeo_Forest(:,1)*-1 ;
+
+
+    %%%% read terrestrial organic matter
+    forcings.Torganic = xlsread('forcings/Torganic.xlsx','','','basic') ;
+    forcings.Torganic(:,1) = forcings.Torganic(:,1)*-1 ;
+
+
+    %%%% read Algeo 2014 δ15N data comparison file
+    Algeo_2014 = xlsread('Data_Algeo_2014.xlsx','','','basic') ;
+    Algeo_2014(:,1) = Algeo_2014(:,1)*-1 ;
+    Algeo_2014_age = Algeo_2014(:,1) ;
+    Algeo_2014_d15N = Algeo_2014(:,2) ;
+
+
+    %%%% read Nitrogen Database comparison file
+    Nitrogen_Database = xlsread('Data_Nitrogen_Database.xlsx','','','basic') ;
+    Nitrogen_Database(:,1) = Nitrogen_Database(:,1)*-1; 
+    Nitrogen_Database_age = Nitrogen_Database(:,1) ;
+    Nitrogen_Database_d15N = Nitrogen_Database(:,2) ;
+
+
+    %%%% read Naqing section Database comparison file
+    NQ_Databese = xlsread('Data_NQ_Databese.xlsx','','','basic') ;
+    NQ_Databese(:,1) = NQ_Databese(:,1)*-1 ;
+    NQ_Databese_age =  NQ_Databese(:,1) ;
+    NQ_Databese_d15N = NQ_Databese(:,2) ; 
+
+    
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%   Generate sensitivity randoms   %%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -226,18 +268,8 @@ function run = SCION_initialise(runcontrol)
         sensparams.randminusplus5 = 2*(0.5 - rand) ;
         sensparams.randminusplus6 = 2*(0.5 - rand) ;
         sensparams.randminusplus7 = 2*(0.5 - rand) ;    
+        sensparams.randminusplus8 = 2*(0.5 - rand) ;    
     end
-    % 
-    % if sensanal == 1
-    %     %%%% test sensitivity structures by running standard run each time
-    %     sensparams.randminusplus1 = 1 ;
-    %     sensparams.randminusplus2 = 1 ;
-    %     sensparams.randminusplus3 = 1 ;
-    %     sensparams.randminusplus4 = 1 ;
-    %     sensparams.randminusplus5 = 1 ;
-    %     sensparams.randminusplus6 = 1 ;
-    %     sensparams.randminusplus7 = 1 ;    
-    % end
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -258,7 +290,7 @@ function run = SCION_initialise(runcontrol)
     end
 
     %%%%%%% model timeframe in years (0 = present day)
-    pars.whenstart = - 1000e6 ;
+    pars.whenstart = - 600e6 ;
     pars.whenend = 0 ;
 
     %%%% setp up grid stamp times
@@ -271,14 +303,17 @@ function run = SCION_initialise(runcontrol)
     pars.gridstamp_number = 1 ;
     pars.finishgrid = 0 ;
 
-    % %%%%%%% Show current timestep in command window? (1 = yes, 0 = no)
-    % pars.telltime = 1;
+    %%%%%%% Show current timestep in command window? (1 = yes, 0 = no)
+    pars.telltime = 1;
+
+    %%%%%%% set number of model steps to take before beiling out
+    pars.bailnumber = 1e5;
 
     %%%%%%% display every n model steps whilst running
     pars.display_resolution = 200 ;
 
     %%%%%%% set maximum step size for solver
-    options = odeset('maxstep',5e5) ;
+    options = odeset('maxstep',1e6) ;
 
     %%%% set stepnumber to 1
     stepnumber = 1 ;
@@ -298,29 +333,30 @@ function run = SCION_initialise(runcontrol)
     pars.delta_GYP_start = 20 ;
     pars.delta_OSr_start = 0.708 ;
     pars.delta_SSr_start = 0.708 ;
+    pars.delta_d15N_ocean_start = 5 ;
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%   Initial parameter tuning option  %%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    if isempty(tuning) == 0
-        pars.ostart = pars.O0 * abs( tuning.Otune )  ;
-        pars.astart = pars.A0 * abs( tuning.Atune ) ;
-        pars.sstart = pars.S0 * abs( tuning.Stune ) ;
-        pars.gstart = pars.G0 * abs( tuning.Gtune ) ;
-        pars.cstart = pars.C0 * abs( tuning.Ctune ) ;
-        pars.pyrstart = pars.PYR0 * abs( tuning.PYRtune ) ;
-        pars.gypstart = pars.GYP0 * abs( tuning.GYPtune ) ; 
+    if isempty(Gtune) == 0
+        pars.ostart = pars.O0 * abs( Otune )  ;
+        pars.astart = pars.A0 * abs( Atune ) ;
+        pars.sstart = pars.S0 * abs( Stune ) ;
+        pars.gstart = pars.G0 * abs( Gtune ) ;
+        pars.cstart = pars.C0 * abs( Ctune ) ;
+        pars.pyrstart = pars.PYR0 * abs( PYRtune ) ;
+        pars.gypstart = pars.GYP0 * abs( GYPtune ) ; 
     end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %%%%% if no tuning use previously tuned values
-    if isempty(tuning) == 1
+    if isempty(Gtune) == 1
 
-        % outputs = [ 0.45 1 1.1 1 0.1 0.05 3 ] ;
-        outputs = [0.45	1 1.1 0.875 0.17 0.05 6.5] ;
+        outputs = [ 0.55 1 1.2 1 0.1 0.05 3 ] ;
+        
         pars.gstart = pars.G0 * outputs(1) ;
         pars.cstart = pars.C0 * outputs(2) ;
         pars.pyrstart = pars.PYR0 * outputs(3) ;
@@ -356,7 +392,8 @@ function run = SCION_initialise(runcontrol)
     pars.startstate(19) = pars.OSr_start * pars.delta_OSr_start ;
     pars.startstate(20) = pars.SSr_start ;
     pars.startstate(21) = pars.SSr_start * pars.delta_SSr_start ;
-
+    pars.startstate(22) = pars.N_start * pars.delta_d15N_ocean_start ;
+    
     %%%% note model start time
     tic
 
@@ -392,17 +429,8 @@ function run = SCION_initialise(runcontrol)
 
     %%%%%% assemble output state vectors
     field_names = fieldnames(workingstate) ;
-
     for numfields = 1:length(field_names)
-
-        %%%% assign output states
         eval([' state.' char( field_names(numfields) ) ' = workingstate.' char( field_names(numfields) ) '(trecords) ; '])
-
-        %%%% sort time vector to catch backtracking
-        [timesort sortindex] = sort(sharedvals) ;
-
-        %%%% reorder states
-        eval([' state.' char( field_names(numfields) ) ' = state.' char( field_names(numfields) ) '(sortindex) ; '])
     end
 
     %%%%%% save state
@@ -425,7 +453,7 @@ function run = SCION_initialise(runcontrol)
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     %%%% only plot if no tuning structure exists, only plot fluxes for quick runs
-    if isempty(tuning) == 1
+    if isempty(Gtune) == 1
         if plotrun == 1            
             if runcontrol>-1
                 SCION_plot_worldgraphic

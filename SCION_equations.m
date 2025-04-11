@@ -8,7 +8,7 @@ function dy = SCION_equations(t,y)
 %      11011------------------101         SCION: Spatial Continuous Integration                 %
 %     111-----------------10011011        Earth Evolution Model                                 %
 %    1--10---------------1111011111                                                             %
-%    1---1011011---------1010110111       Lead developer: Benjamin J. W. Mills                  %
+%    1---1011011---------1010110111       Coded by Benjamin J. W. Mills                         %
 %    1---1011000111----------010011       email: b.mills@leeds.ac.uk                            %
 %    1----1111011101----------10101                                                             %
 %     1----1001111------------0111        Model equations file                                  %
@@ -21,7 +21,7 @@ function dy = SCION_equations(t,y)
 
 
 %%%%%%% setup dy array
-dy = zeros(21,1);  
+dy = zeros(22,1);  
 
 %%%%%%% set up global parameters
 global stepnumber
@@ -32,8 +32,6 @@ global gridstate
 global INTERPSTACK
 global sensanal
 global sensparams
-global tuning
-
 
 %%%%%%%%%%%%% get variables from Y to make working easier
 P = y(1) ;
@@ -92,9 +90,9 @@ W_reloaded = interp1qr( forcings.t', forcings.W' , t_geol ) ;
 %%%% Additional forcings
 GR_BA = interp1qr( forcings.GR_BA(:,1)./1e6 , forcings.GR_BA(:,2) , t_geol ) ;
 newGA = interp1qr( forcings.newGA(:,1)./1e6 , forcings.newGA(:,2) , t_geol ) ;
-D_combined_mid = interp1qr( forcings.D_force_x' , forcings.D_force_mid' , t_geol) ;
-D_combined_min = interp1qr( forcings.D_force_x' , forcings.D_force_min' , t_geol) ;
-D_combined_max = interp1qr( forcings.D_force_x' , forcings.D_force_max' , t_geol) ;
+D_combined_mid = interp1qr( forcings.D_force_x' , forcings.D_force_mid , t_geol) ;
+D_combined_min = interp1qr( forcings.D_force_x' , forcings.D_force_min , t_geol) ;
+D_combined_max = interp1qr( forcings.D_force_x' , forcings.D_force_max , t_geol) ;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%  Choose forcing functions  %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -102,7 +100,13 @@ D_combined_max = interp1qr( forcings.D_force_x' , forcings.D_force_max' , t_geol
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % DEGASS = 1 ;
-DEGASS = D_combined_mid ;
+% DEGASS = D_sbz_rift ;
+% DEGASS = D_merdith ;
+% if t_geol < -600
+%     DEGASS = 2 ;
+% else
+    DEGASS = D_combined_mid ;
+% end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % W = 1 ;
 W = W_reloaded ;
@@ -117,10 +121,8 @@ Bforcing = interp1qr([-1000 -150 -100 0]',[0.75 0.75 1 1]',t_geol) ;
 % Bforcing = 1 ;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 BAS_AREA = GR_BA ;
-% BAS_AREA = 1 ;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 GRAN_AREA = newGA ;
-% GRAN_AREA = 1 ;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 PREPLANT = 1/4 ;
 capdelS = 27   ;
@@ -136,6 +138,19 @@ f_biot = interp1qr([-1000 -525 -520 0]',[0 0 1 1]',t_geol);
 CB = interp1qr([0 1]',[1.2 1]',f_biot) ;
 
 
+%%%% sea level
+SEALEVEL = interp1qr(forcings.sea_level(:,1),forcings.sea_level(:,2),t_geol) ;
+
+%%%% water column denitrificaiton constant
+k_denit = 0.001 ;
+
+%%%% Palaeo_Forest 
+Palaeo_Forest = interp1qr(forcings.Palaeo_Forest(:,1),forcings.Palaeo_Forest(:,2),t_geol) ;
+
+%%%% Terrestrial organic matter
+Torganic = interp1qr(forcings.Torganic(:,1),forcings.Torganic (:,2),t_geol) ; 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%   Sensitivity analysis  %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -144,13 +159,13 @@ CB = interp1qr([0 1]',[1.2 1]',f_biot) ;
 if sensanal == 1
     
     %%%% Very degassing between upper and lower bounds
-    if sensparams.randminusplus1 > 0 
+    if sensparams.randminusplus1 > 0
         DEGASS = (1 - sensparams.randminusplus1)*DEGASS + sensparams.randminusplus1*D_combined_max ;
     else
         DEGASS = (1 + sensparams.randminusplus1)*DEGASS - sensparams.randminusplus1*D_combined_min ;
     end
-
-    % %%%% simple +/- 20% variation
+        
+    %%%% simple +/- 20% variation
     BAS_AREA = BAS_AREA * (1 + 0.2*sensparams.randminusplus2) ;
     GRAN_AREA = GRAN_AREA * (1 + 0.2*sensparams.randminusplus3) ;
     
@@ -161,9 +176,15 @@ if sensanal == 1
     capdelS = 30 + 10*sensparams.randminusplus5 ;
     capdelC_land = 25 + 5*sensparams.randminusplus6 ;
     capdelC_marine = 30 + 5*sensparams.randminusplus7 ;
+    
+    
+    %%%% formulation for denitfrfication location
+    k_denit = 0.001 + 0.0005*sensparams.randminusplus8 ;
+    
 end
 
 
+fraction_water_column = max( 0.27 - k_denit*SEALEVEL , 0 ) ;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%   Spatial fields from stack   %%%%%%%%%%%%%%%%%%%%%
@@ -485,7 +506,18 @@ else
     nfix = 0 ;
 end
 
-denit = pars.k_denit * ( 1 + ( ANOX / (1-pars.k_oxfrac) )  ) * (N/pars.N0) ;
+
+denit_water = fraction_water_column * pars.k_denit * ( 1 + ( ANOX / (1-pars.k_oxfrac) )  ) * (N/pars.N0) ;
+denit_sediment = (1-fraction_water_column) * pars.k_denit * ( 1 + ( ANOX / (1-pars.k_oxfrac) )  ) * (N/pars.N0) ;
+ndepo = pars.k_ndepo ;
+
+%%%% riverine input
+%%%% riverine_input = pars.k_riverine * VEG ;
+riverine_input = pars.k_riverine * VEG ;
+%%%% riverine_input = pars.k_riverine * VEG + pars.k_riverine * Palaeo_Forest * 10 ;
+% riverine_input = pars.k_riverine * VEG + pars.k_riverine * Palaeo_Forest * 10 + (8.65e7/30) * Torganic ;
+
+
 
 %%%% reductant input
 reductant_input = pars.k_reductant_input * DEGASS ;
@@ -520,7 +552,9 @@ dy(7) = mpsb - pyrw - pyrdeg ;
 dy(8) = mgsb - gypw - gypdeg ;
 
 %%%% Nitrate
-dy(11) = nfix - denit - monb;
+%%%% dy(11) = nfix - denit_sediment - denit_water - monb + ndepo + riverine_input ;
+dy(11) = nfix - denit_sediment - denit_water - monb + riverine_input ;
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -530,11 +564,19 @@ dy(11) = nfix - denit - monb;
 %%%% d13c and d34s for forwards model
 d13c_A = y(16) / y(3) ;
 d34s_S = y(17) / y(4) ;
+d15N_ocean = y(22) / y(11) ;
 
 %%%% carbonate fractionation
 delta_locb = d13c_A - capdelC_land ; 
 delta_mocb = d13c_A - capdelC_marine ; 
 delta_mccb = d13c_A ;
+d15N_denit = d15N_ocean - 15 ;
+
+%%%% nitrogen fractionation
+d15N_atm = 0 ;
+d15N_RIV = 5 ;
+% d15N_RIV = 10 ;
+
 
 %%%%% S isotopes (copse)
 delta_mpsb = d34s_S - capdelS ;
@@ -556,6 +598,10 @@ dy(16) = -locb*(  delta_locb ) -mocb*( delta_mocb ) + oxidw*delta_G + ocdeg*delt
 
 %%% delta_S * S
 dy(17) = gypw*delta_GYP + pyrw*delta_PYR -mgsb*d34s_S - mpsb*( delta_mpsb ) + gypdeg*delta_GYP + pyrdeg*delta_PYR ; 
+
+%%% delta_N * N
+%%% dy(22) = nfix*d15N_atm - denit_water*d15N_denit - denit_sediment*d15N_ocean - monb*d15N_ocean + ndepo*d15N_atm + riverine_input*d15N_RIV;
+dy(22) = nfix*d15N_atm - denit_water*d15N_denit - denit_sediment*d15N_ocean - monb*d15N_ocean + riverine_input*d15N_RIV ;
 
 
 
@@ -646,6 +692,7 @@ if sensanal == 0
     workingstate.delta_PYR(stepnumber,1) = delta_PYR ;
     workingstate.delta_GYP(stepnumber,1) = delta_GYP ;
     workingstate.delta_OSr(stepnumber,1) = delta_OSr ;
+    workingstate.d15N_ocean(stepnumber,1) = d15N_ocean ;
     %%%%%%% print forcings
     workingstate.DEGASS(stepnumber,1) = DEGASS ;
     workingstate.W(stepnumber,1) = W ;
@@ -654,6 +701,9 @@ if sensanal == 0
     workingstate.Bforcing(stepnumber,1) = Bforcing ;
     workingstate.BAS_AREA(stepnumber,1) = BAS_AREA ;
     workingstate.GRAN_AREA(stepnumber,1) = GRAN_AREA ;
+    workingstate.SEALEVEL(stepnumber,1) = SEALEVEL ;
+    workingstate.Palaeo_Forest(stepnumber,1) = Palaeo_Forest ;
+    workingstate.Torganic(stepnumber,1) = Torganic ;
     %%%%%%%% print variables
     workingstate.RCO2(stepnumber,1) = RCO2 ;
     workingstate.RO2(stepnumber,1) = RO2 ;
@@ -664,6 +714,7 @@ if sensanal == 0
     %%%%%%%% print fluxes
     workingstate.mocb(stepnumber,1) = mocb ;
     workingstate.locb(stepnumber,1) = locb ;
+    workingstate.monb(stepnumber,1) = monb ;
     workingstate.mccb(stepnumber,1) = mccb ;
     workingstate.mpsb(stepnumber,1) = mpsb ;
     workingstate.mgsb(stepnumber,1) = mgsb ;
@@ -675,7 +726,9 @@ if sensanal == 0
     workingstate.phosw(stepnumber,1) = phosw ;
     workingstate.psea(stepnumber,1) = psea ;
     workingstate.nfix(stepnumber,1) = nfix ;
-    workingstate.denit(stepnumber,1) = denit ;
+    workingstate.ndepo(stepnumber,1) = ndepo ;
+    workingstate.denit_water(stepnumber,1) = denit_water ;
+    workingstate.denit_sediment(stepnumber,1) = denit_sediment ;
     workingstate.VEG(stepnumber,1) = VEG ;
     workingstate.pyrw(stepnumber,1) = pyrw ;
     workingstate.gypw(stepnumber,1) = gypw ;
@@ -732,9 +785,9 @@ if sensanal == 0
 
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%   Record plotting or tuning states only in sensanal or tuning %%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%   Record plotting states only in sensanal   %%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if sensanal == 1
     workingstate.BAS_AREA(stepnumber,1) = BAS_AREA;
@@ -753,18 +806,10 @@ if sensanal == 1
     workingstate.ANOX(stepnumber,1) = ANOX ;
     workingstate.P(stepnumber,1) = P/pars.P0 ;
     workingstate.N(stepnumber,1) = N/pars.N0 ;
+    workingstate.d15N_ocean(stepnumber,1) = d15N_ocean ;
+    workingstate.fraction_water_column(stepnumber,1) = fraction_water_column ;
     workingstate.time_myr(stepnumber,1) = t_geol ;
     workingstate.time(stepnumber,1) = t;
-end
-
-if isempty(tuning) == 0
-    workingstate.Orel(stepnumber,1) = O/pars.O0 ;
-    workingstate.Srel(stepnumber,1) = S/pars.S0 ;
-    workingstate.Arel(stepnumber,1) = A/pars.A0 ;
-    workingstate.Crel(stepnumber,1) = C/pars.C0 ;
-    workingstate.Grel(stepnumber,1) = G/pars.G0 ;
-    workingstate.PYRrel(stepnumber,1) = PYR/pars.PYR0 ;
-    workingstate.GYPrel(stepnumber,1) = GYP/pars.GYP0 ;
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -785,6 +830,12 @@ end
 
 %%%% record current model step
 stepnumber = stepnumber + 1 ;
+
+
+%%%% option to bail out if model is running aground
+if stepnumber > pars.bailnumber
+   terminateExecution
+end
 
 
 
